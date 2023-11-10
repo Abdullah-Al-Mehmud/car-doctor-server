@@ -10,7 +10,11 @@ const port = process.env.PORT || 3000;
 // middle ware
 app.use(
   cors({
-    origin: ["http://localhost:5173"],
+    origin: [
+      "http://localhost:5173",
+      // "https://cars-doctor-391c2.web.app",
+      // "https://cars-doctor-391c2.firebaseapp.com",
+    ],
     credentials: true,
   })
 );
@@ -52,10 +56,10 @@ async function run() {
     const bookingCollection = client.db("carDoctor").collection("bookings");
 
     // auth related api
+
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      console.log(user);
-
+      console.log("user token", user);
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
         expiresIn: "1h",
       });
@@ -63,14 +67,34 @@ async function run() {
       res
         .cookie("token", token, {
           httpOnly: true,
-          secure: false,
+          secure: true,
+          sameSite: "none",
         })
+        .send({ success: true });
+    });
+
+    app.post("/logout", async (req, res) => {
+      const user = req.body;
+      console.log("logged out", user);
+      res
+        .clearCookie("token", { maxAge: 0, secure: true, sameSite: "none" })
         .send({ success: true });
     });
 
     // services related api
     app.get("/services", async (req, res) => {
-      const result = await serviceCollection.find().toArray();
+      const filter = req.query;
+      const query = {
+        // price: { $gte: 150 },
+        title: { $regex: filter.search, $options: "i" },
+      };
+      const options = {
+        sort: {
+          price: filter.sort === "asc" ? 1 : -1,
+        },
+      };
+
+      const result = await serviceCollection.find(query, options).toArray();
       res.send(result);
     });
 
@@ -84,11 +108,11 @@ async function run() {
     // bookings
 
     app.get("/bookings", verifyToken, async (req, res) => {
-      if (req.query.email !== req.user.email) {
+      if (req.user.email !== req.query.email) {
         return res.status(403).send({ message: "forbidden access" });
       }
       let query = {};
-      console.log("ttt token", req.cookies.token);
+
       if (req.query?.email) {
         query = { email: req.query.email };
       }
